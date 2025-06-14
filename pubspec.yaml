@@ -1,9 +1,12 @@
-name: skycast
-description: A simple weather app using Flutter and OpenWeatherMap.
+name: weather_app
+description: A simple weather app with clean UI.
+
 publish_to: 'none'
 
+version: 1.0.0+1
+
 environment:
-  sdk: '^3.8.0'
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:

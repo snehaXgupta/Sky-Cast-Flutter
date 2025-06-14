@@ -2,134 +2,134 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-void main() {
-  runApp(SkyCastApp());
-}
+void main() => runApp(WeatherApp());
 
-class SkyCastApp extends StatelessWidget {
+class WeatherApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SkyCast',
-      debugShowCheckedModeBanner: false,
+      title: 'Weather App',
       theme: ThemeData(
-        fontFamily: 'Segoe UI',
-        brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
-        useMaterial3: true,
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.white,
       ),
-      home: WeatherScreen(),
+      home: WeatherHomePage(),
     );
   }
 }
 
-class WeatherScreen extends StatefulWidget {
+class WeatherHomePage extends StatefulWidget {
   @override
-  _WeatherScreenState createState() => _WeatherScreenState();
+  _WeatherHomePageState createState() => _WeatherHomePageState();
 }
 
-class _WeatherScreenState extends State<WeatherScreen> {
+class _WeatherHomePageState extends State<WeatherHomePage> {
   final TextEditingController _controller = TextEditingController();
-  String? temperature = '';
-  String? description = '';
-  String? iconUrl = '';
-  bool isLoading = false;
-  String apiKey = 'e17416922f46bcfc873a13b01a26a278';
+  String _weather = '';
+  bool _loading = false;
+
+  // 🔑 Your OpenWeatherMap API key
+  static const String apiKey = 'e17416922f46bcfc873a13b01a26a278';
 
   Future<void> fetchWeather(String city) async {
-    setState(() {
-      isLoading = true;
-    });
-
     final url =
         'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey&units=metric';
 
+    setState(() => _loading = true);
+
     try {
       final response = await http.get(Uri.parse(url));
-      final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final temp = data['main']['temp'];
+        final description = data['weather'][0]['description'];
+
         setState(() {
-          temperature = "${data['main']['temp']} °C";
-          description = data['weather'][0]['description'];
-          iconUrl =
-              'http://openweathermap.org/img/wn/${data['weather'][0]['icon']}@2x.png';
+          _weather =
+              'Temperature: $temp°C\nCondition: ${description[0].toUpperCase()}${description.substring(1)}';
+          _loading = false;
         });
       } else {
         setState(() {
-          temperature = 'City not found';
-          description = '';
-          iconUrl = '';
+          _weather = 'City not found!';
+          _loading = false;
         });
       }
     } catch (e) {
-      print("Error: $e");
+      setState(() {
+        _weather = 'Error fetching data.';
+        _loading = false;
+      });
     }
-
-    setState(() {
-      isLoading = false;
-    });
   }
 
-  Widget weatherCard() {
-    return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        padding: EdgeInsets.all(20),
-        width: double.infinity,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (iconUrl != null && iconUrl!.isNotEmpty)
-              Image.network(iconUrl!, height: 100),
-            SizedBox(height: 10),
-            Text(
-              temperature ?? '',
-              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              description ?? '',
-              style: TextStyle(fontSize: 18, color: Colors.grey[700]),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  final List<String> weatherFacts = [
+    'The highest temperature ever recorded was 56.7°C in Death Valley, USA.',
+    'Raindrops can fall at speeds of about 35 km/h.',
+    'Snowflakes can take up to an hour to fall from the sky.',
+    'The coldest temperature on Earth was -89.2°C in Antarctica.',
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue[50],
       appBar: AppBar(
-        title: Text('SkyCast'),
-        centerTitle: true,
-        backgroundColor: Colors.blue[200],
+        title: Text('Simple Weather App'),
+        backgroundColor: Colors.blue[700],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: EdgeInsets.all(16),
         child: Column(
           children: [
             TextField(
               controller: _controller,
               decoration: InputDecoration(
-                hintText: 'Enter city name',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                suffixIcon: IconButton(
-                  icon: Icon(Icons.search),
-                  onPressed: () => fetchWeather(_controller.text),
-                ),
+                labelText: 'Enter City Name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => fetchWeather(_controller.text),
+              child: Text('Get Weather'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
               ),
             ),
             SizedBox(height: 20),
-            if (isLoading)
-              CircularProgressIndicator()
-            else if (temperature != null && temperature!.isNotEmpty)
-              weatherCard(),
+            Container(
+              padding: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: _loading
+                  ? CircularProgressIndicator()
+                  : Text(
+                      _weather,
+                      style: TextStyle(fontSize: 20),
+                      textAlign: TextAlign.center,
+                    ),
+            ),
+            SizedBox(height: 30),
+            Divider(),
+            Text(
+              '🌤️ Fun Weather Facts',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            ...weatherFacts.map((fact) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('• ', style: TextStyle(fontSize: 16)),
+                      Expanded(child: Text(fact, style: TextStyle(fontSize: 16))),
+                    ],
+                  ),
+                )),
           ],
         ),
       ),
