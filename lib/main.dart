@@ -1,138 +1,294 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'dart:ui';
+import 'models/weather_model.dart';
+import 'services/weather_service.dart';
 
-void main() => runApp(WeatherApp());
+void main() {
+  runApp(const SkyCastApp());
+}
 
-class WeatherApp extends StatelessWidget {
+class SkyCastApp extends StatelessWidget {
+  const SkyCastApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Weather App',
+      title: 'Sky Cast',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: Colors.white,
+        brightness: Brightness.dark,
+        textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme),
       ),
-      home: WeatherHomePage(),
+      home: const WeatherHomePage(),
     );
   }
 }
 
 class WeatherHomePage extends StatefulWidget {
+  const WeatherHomePage({super.key});
+
   @override
-  _WeatherHomePageState createState() => _WeatherHomePageState();
+  State<WeatherHomePage> createState() => _WeatherHomePageState();
 }
 
 class _WeatherHomePageState extends State<WeatherHomePage> {
-  final TextEditingController _controller = TextEditingController();
-  String _weather = '';
-  bool _loading = false;
+  final WeatherService _weatherService = WeatherService();
+  Weather? _weather;
+  Location? _selectedLocation;
+  bool _isLoading = false;
+  final TextEditingController _searchController = TextEditingController();
+  List<Location> _suggestions = [];
 
-  // 🔑 Your OpenWeatherMap API key
-  static const String apiKey = 'e17416922f46bcfc873a13b01a26a278';
+  @override
+  void initState() {
+    super.initState();
+    // Default location
+    _fetchWeatherForLocation(Location(name: 'London', lat: 51.5074, lon: -0.1278, country: 'UK'));
+  }
 
-  Future<void> fetchWeather(String city) async {
-    final url =
-        'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey&units=metric';
-
-    setState(() => _loading = true);
+  Future<void> _fetchWeatherForLocation(Location location) async {
+    setState(() {
+      _isLoading = true;
+      _selectedLocation = location;
+      _suggestions = [];
+      _searchController.clear();
+    });
 
     try {
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final temp = data['main']['temp'];
-        final description = data['weather'][0]['description'];
-
-        setState(() {
-          _weather =
-              'Temperature: $temp°C\nCondition: ${description[0].toUpperCase()}${description.substring(1)}';
-          _loading = false;
-        });
-      } else {
-        setState(() {
-          _weather = 'City not found!';
-          _loading = false;
-        });
-      }
+      final weather = await _weatherService.fetchWeather(location.lat, location.lon);
+      setState(() {
+        _weather = weather;
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() {
-        _weather = 'Error fetching data.';
-        _loading = false;
+        _isLoading = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.redAccent),
+      );
     }
   }
 
-  final List<String> weatherFacts = [
-    'The highest temperature ever recorded was 56.7°C in Death Valley, USA.',
-    'Raindrops can fall at speeds of about 35 km/h.',
-    'Snowflakes can take up to an hour to fall from the sky.',
-    'The coldest temperature on Earth was -89.2°C in Antarctica.',
-  ];
+  void _searchLocation(String query) async {
+    if (query.isEmpty) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    try {
+      final results = await _weatherService.searchLocations(query);
+      setState(() => _suggestions = results);
+    } catch (e) {
+      // Handle error quietly
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Simple Weather App'),
-        backgroundColor: Colors.blue[700],
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                labelText: 'Enter City Name',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () => fetchWeather(_controller.text),
-              child: Text('Get Weather'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-            ),
-            SizedBox(height: 20),
-            Container(
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: _loading
-                  ? CircularProgressIndicator()
-                  : Text(
-                      _weather,
-                      style: TextStyle(fontSize: 20),
-                      textAlign: TextAlign.center,
-                    ),
-            ),
-            SizedBox(height: 30),
-            Divider(),
-            Text(
-              '🌤️ Fun Weather Facts',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 10),
-            ...weatherFacts.map((fact) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('• ', style: TextStyle(fontSize: 16)),
-                      Expanded(child: Text(fact, style: TextStyle(fontSize: 16))),
-                    ],
+      body: Stack(
+        children: [
+          // Dynamic Background
+          _buildBackground(),
+
+          // Main Content
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                children: [
+                  const SizedBox(height: 20),
+                  _buildSearchBar(),
+                  if (_suggestions.isNotEmpty) _buildSuggestions(),
+                  Expanded(
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                        : _weather == null
+                            ? const Center(child: Text('Search for a location'))
+                            : RefreshIndicator(
+                                onRefresh: () => _fetchWeatherForLocation(_selectedLocation!),
+                                child: SingleChildScrollView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  child: Column(
+                                    children: [
+                                      const SizedBox(height: 40),
+                                      _buildLocationHeader(),
+                                      const SizedBox(height: 20),
+                                      _buildMainWeather(),
+                                      const SizedBox(height: 40),
+                                      _buildWeatherDetails(),
+                                      const SizedBox(height: 40),
+                                    ],
+                                  ),
+                                ),
+                              ),
                   ),
-                )),
-          ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBackground() {
+    Color topColor = const Color(0xFF1A237E);
+    Color bottomColor = const Color(0xFF0D47A1);
+
+    if (_weather != null) {
+      final code = int.tryParse(_weather!.iconCode) ?? 0;
+      if (code == 0) {
+        topColor = const Color(0xFF29B6F6);
+        bottomColor = const Color(0xFF0288D1);
+      } else if (code <= 3) {
+        topColor = const Color(0xFF78909C);
+        bottomColor = const Color(0xFF455A64);
+      } else if (code <= 67) {
+        topColor = const Color(0xFF37474F);
+        bottomColor = const Color(0xFF102027);
+      }
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(seconds: 1),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [topColor, bottomColor],
         ),
       ),
     );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: TextField(
+            controller: _searchController,
+            onChanged: _searchLocation,
+            decoration: InputDecoration(
+              hintText: 'Search city...',
+              prefixIcon: const Icon(Icons.search, color: Colors.white70),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 15),
+              hintStyle: const TextStyle(color: Colors.white54),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuggestions() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Column(
+        children: _suggestions.map((loc) {
+          return ListTile(
+            title: Text(loc.name, style: const TextStyle(color: Colors.white)),
+            subtitle: Text(loc.country, style: const TextStyle(color: Colors.white54)),
+            onTap: () => _fetchWeatherForLocation(loc),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildLocationHeader() {
+    return Column(
+      children: [
+        Text(
+          _selectedLocation?.name ?? 'Unknown',
+          style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+        ),
+        Text(
+          DateFormat('EEEE, d MMMM').format(DateTime.now()),
+          style: const TextStyle(fontSize: 16, color: Colors.white70),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMainWeather() {
+    return Column(
+      children: [
+        _getWeatherIcon(_weather!.iconCode),
+        const SizedBox(height: 10),
+        Text(
+          '${_weather!.temperature.round()}°',
+          style: const TextStyle(fontSize: 86, fontWeight: FontWeight.w200),
+        ),
+        Text(
+          _weather!.condition,
+          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeatherDetails() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        _buildDetailItem(Icons.water_drop_outlined, 'Humidity', '${_weather!.humidity}%'),
+        _buildDetailItem(Icons.air, 'Wind', '${_weather!.windSpeed} km/h'),
+      ],
+    );
+  }
+
+  Widget _buildDetailItem(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: Colors.white70),
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(fontSize: 14, color: Colors.white54)),
+          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _getWeatherIcon(String code) {
+    final intCode = int.tryParse(code) ?? 0;
+    IconData icon;
+    Color color = Colors.white;
+
+    if (intCode == 0) {
+      icon = Icons.wb_sunny_rounded;
+      color = Colors.yellowAccent;
+    } else if (intCode <= 3) {
+      icon = Icons.cloud_outlined;
+    } else if (intCode <= 67) {
+      icon = Icons.umbrella_rounded;
+      color = Colors.lightBlueAccent;
+    } else if (intCode <= 99) {
+      icon = Icons.thunderstorm_rounded;
+      color = Colors.deepPurpleAccent;
+    } else {
+      icon = Icons.wb_cloudy_rounded;
+    }
+
+    return Icon(icon, size: 100, color: color);
   }
 }
